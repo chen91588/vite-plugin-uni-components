@@ -10,28 +10,27 @@ const multilineCommentsRE = /\/\*.*?\*\//gms
 const singlelineCommentsRE = /\/\/.*$/gm
 
 function extractImports(code: string) {
-  return Object.fromEntries(Array.from(code.matchAll(/['"]?([^\s'"]+)['"]?\s*:\s*(.+?)[,;\n]/g)).map(i => [i[1], i[2]]))
+  return Object.fromEntries(
+    Array.from(code.matchAll(/['"]?([^\s'"]+)['"]?\s*:\s*(.+?)[,;\n]/g)).map((i) => [i[1], i[2]]),
+  )
 }
 
 export function parseDeclaration(code: string): DeclarationImports | undefined {
-  if (!code)
-    return
+  if (!code) return
 
-  code = code
-    .replace(multilineCommentsRE, '')
-    .replace(singlelineCommentsRE, '')
+  code = code.replace(multilineCommentsRE, '').replace(singlelineCommentsRE, '')
 
   const imports: DeclarationImports = {
     component: {},
     directive: {},
   }
   const componentDeclaration = /export\s+interface\s+GlobalComponents\s*{(.*?)}/s.exec(code)?.[0]
-  if (componentDeclaration)
-    imports.component = extractImports(componentDeclaration)
+  if (componentDeclaration) imports.component = extractImports(componentDeclaration)
 
-  const directiveDeclaration = /export\s+interface\s+ComponentCustomProperties\s*{(.*?)}/s.exec(code)?.[0]
-  if (directiveDeclaration)
-    imports.directive = extractImports(directiveDeclaration)
+  const directiveDeclaration = /export\s+interface\s+ComponentCustomProperties\s*{(.*?)}/s.exec(
+    code,
+  )?.[0]
+  if (directiveDeclaration) imports.directive = extractImports(directiveDeclaration)
 
   return imports
 }
@@ -41,13 +40,14 @@ export function parseDeclaration(code: string): DeclarationImports | undefined {
  *
  * `[name, "typeof import(path)[importName]"]`
  */
-function stringifyComponentInfo(filepath: string, { from: path, as: name, name: importName }: ComponentInfo, importPathTransform?: Options['importPathTransform']): [string, string] | undefined {
-  if (!name)
-    return undefined
+function stringifyComponentInfo(
+  filepath: string,
+  { from: path, as: name, name: importName }: ComponentInfo,
+  importPathTransform?: Options['importPathTransform'],
+): [string, string] | undefined {
+  if (!name) return undefined
   path = getTransformedPath(path, importPathTransform)
-  const related = isAbsolute(path)
-    ? `./${relative(dirname(filepath), path)}`
-    : path
+  const related = isAbsolute(path) ? `./${relative(dirname(filepath), path)}` : path
   // const entry = `typeof import('${slash(related)}')['${importName || 'default'}']`
   const entry = `typeof import('${slash(related)}')['default']`
   return [name, entry]
@@ -58,9 +58,14 @@ function stringifyComponentInfo(filepath: string, { from: path, as: name, name: 
  *
  * `{ name: "typeof import(path)[importName]", ... }`
  */
-export function stringifyComponentsInfo(filepath: string, components: ComponentInfo[], importPathTransform?: Options['importPathTransform']): Record<string, string> {
+export function stringifyComponentsInfo(
+  filepath: string,
+  components: ComponentInfo[],
+  importPathTransform?: Options['importPathTransform'],
+): Record<string, string> {
   return Object.fromEntries(
-    components.map(info => stringifyComponentInfo(filepath, info, importPathTransform))
+    components
+      .map((info) => stringifyComponentInfo(filepath, info, importPathTransform))
       .filter(notNullish),
   )
 }
@@ -70,13 +75,20 @@ export interface DeclarationImports {
   directive: Record<string, string>
 }
 
-export function getDeclarationImports(ctx: Context, filepath: string): DeclarationImports | undefined {
-  const component = stringifyComponentsInfo(filepath, [
-    ...Object.values({
-      ...ctx.componentNameMap,
-      ...ctx.componentCustomMap,
-    }),
-  ], ctx.options.importPathTransform)
+export function getDeclarationImports(
+  ctx: Context,
+  filepath: string,
+): DeclarationImports | undefined {
+  const component = stringifyComponentsInfo(
+    filepath,
+    [
+      ...Object.values({
+        ...ctx.componentNameMap,
+        ...ctx.componentCustomMap,
+      }),
+    ],
+    ctx.options.importPathTransform,
+  )
 
   const directive = stringifyComponentsInfo(
     filepath,
@@ -84,10 +96,7 @@ export function getDeclarationImports(ctx: Context, filepath: string): Declarati
     ctx.options.importPathTransform,
   )
 
-  if (
-    (Object.keys(component).length + Object.keys(directive).length) === 0
-  )
-    return
+  if (Object.keys(component).length + Object.keys(directive).length === 0) return
 
   return { component, directive }
 }
@@ -96,31 +105,27 @@ export function stringifyDeclarationImports(imports: Record<string, string>) {
   return Object.entries(imports)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, v]) => {
-      if (!/^\w+$/.test(name))
-        name = `'${name}'`
+      if (!/^\w+$/.test(name)) name = `'${name}'`
       return `${name}: ${v}`
     })
 }
 
-export function getDeclaration(ctx: Context, filepath: string, originalImports?: DeclarationImports) {
+export function getDeclaration(
+  ctx: Context,
+  filepath: string,
+  originalImports?: DeclarationImports,
+) {
   const imports = getDeclarationImports(ctx, filepath)
-  if (!imports)
-    return
+  if (!imports) return
 
   const declarations = {
     component: stringifyDeclarationImports({ ...originalImports?.component, ...imports.component }),
     directive: stringifyDeclarationImports({ ...originalImports?.directive, ...imports.directive }),
   }
 
-  const head = ctx.options.version === 2.7
-    ? `export {}
+  const head =`export {}
 
 declare module 'vue' {`
-    : `import '@vue/runtime-core'
-
-export {}
-
-declare module '@vue/runtime-core' {`
 
   let code = `/* eslint-disable */
 /* prettier-ignore */
@@ -155,9 +160,7 @@ export async function writeDeclaration(ctx: Context, filepath: string, removeUnu
   const originalImports = removeUnused ? undefined : parseDeclaration(originalContent)
 
   const code = getDeclaration(ctx, filepath, originalImports)
-  if (!code)
-    return
+  if (!code) return
 
-  if (code !== originalContent)
-    await writeFile(filepath, code)
+  if (code !== originalContent) await writeFile(filepath, code)
 }
